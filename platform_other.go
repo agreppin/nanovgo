@@ -1,3 +1,4 @@
+//go:build (!arm || !arm64) && !js && !android
 // +build !arm !arm64
 // +build !js
 // +build !android
@@ -6,7 +7,6 @@ package nanovgo
 
 import (
 	"encoding/binary"
-	"log"
 	"math"
 	"unsafe"
 )
@@ -34,8 +34,4 @@ func castFloat32ToByte(vertexes []float32) []byte {
 		b = (*(*[1 << 20]byte)(unsafe.Pointer(&vertexes[0])))[:len(vertexes)*4]
 	}
 	return b
-}
-
-func dumpLog(values ...interface{}) {
-	log.Println(values...)
 }

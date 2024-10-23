@@ -1,15 +1,25 @@
+//go:build !js
 // +build !js
 
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"github.com/goxjs/gl"
 	"github.com/goxjs/glfw"
-	"github.com/shibukawa/nanovgo"
-	"github.com/shibukawa/nanovgo/perfgraph"
-	"github.com/shibukawa/nanovgo/sample/demo"
+	"image"
+	_ "image/png"
 	"log"
+	"nanovgo"
+	"nanovgo/perfgraph"
+	"nanovgo/sample/demo"
+)
+
+var (
+	//go:embed images/icon1.png
+	icon1 []byte
 )
 
 var blowup bool
@@ -23,6 +33,15 @@ func key(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods gl
 	} else if key == glfw.KeyP && action == glfw.Press {
 		premult = !premult
 	}
+}
+
+func loadImage(data []byte) image.Image {
+	a := bytes.NewReader(data)
+	i, _, e := image.Decode(a)
+	if e != nil {
+		log.Fatal(e)
+	}
+	return i
 }
 
 func main() {
@@ -39,6 +58,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	window.SetIcon([]image.Image{loadImage(icon1)})
 	window.SetKeyCallback(key)
 	window.MakeContextCurrent()
 
@@ -94,7 +114,7 @@ func LoadDemo(ctx *nanovgo.Context) *demo.DemoData {
 	d := &demo.DemoData{}
 	for i := 0; i < 12; i++ {
 		path := fmt.Sprintf("images/image%d.jpg", i+1)
-		d.Images = append(d.Images, ctx.CreateImage(path, 0))
+		d.Images = append(d.Images, int(ctx.CreateImage(path, 0)))
 		if d.Images[i] == 0 {
 			log.Fatalf("Could not load %s", path)
 		}

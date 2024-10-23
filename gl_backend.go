@@ -3,11 +3,9 @@ package nanovgo
 import (
 	"errors"
 	"fmt"
-	"unsafe"
-
-	"C"
-
-	gl "github.com/xlab/android-go/gles2"
+	"github.com/goxjs/gl"
+	"log"
+	"strings"
 )
 
 const (
@@ -29,31 +27,29 @@ func NewContext(flags CreateFlags) (*Context, error) {
 }
 
 type glShader struct {
-	program      uint32              //gl.Program
-	fragment     uint32              //gl.Shader
-	vertex       uint32              //gl.Shader
-	locations    [glnvgMaxLOCS]int32 //gl.Uniform
-	vertexAttrib int32               //gl.Attrib
-	tcoordAttrib int32               //gl.Attrib
+	program      gl.Program
+	fragment     gl.Shader
+	vertex       gl.Shader
+	locations    [glnvgMaxLOCS]gl.Uniform
+	vertexAttrib gl.Attrib
+	tcoordAttrib gl.Attrib
 }
 
 func (s *glShader) createShader(name, header, opts, vShader, fShader string) error {
 	program := gl.CreateProgram()
 
 	vertexShader := gl.CreateShader(gl.VERTEX_SHADER)
-	gl.ShaderSource(vertexShader, 1, []string{header, opts, vShader}, []int32{int32(len(header)), int32(len(opts)), int32(len(vShader))})
+	gl.ShaderSource(vertexShader, strings.Join([]string{header, opts, vShader}, "\n"))
 	gl.CompileShader(vertexShader)
-	var status int32
-	gl.GetShaderiv(vertexShader, gl.COMPILE_STATUS, &status)
+	status := gl.Enum(gl.GetShaderi(vertexShader, gl.COMPILE_STATUS))
 	if status != gl.TRUE {
 		return dumpShaderError(vertexShader, name, "vert")
 	}
 
 	fragmentShader := gl.CreateShader(gl.FRAGMENT_SHADER)
-	gl.ShaderSource(fragmentShader, 1, []string{header, opts, fShader}, []int32{int32(len(header)), int32(len(opts)), int32(len(fShader))})
+	gl.ShaderSource(fragmentShader, strings.Join([]string{header, opts, fShader}, "\n"))
 	gl.CompileShader(fragmentShader)
-
-	gl.GetShaderiv(fragmentShader, gl.COMPILE_STATUS, &status)
+	status = gl.Enum(gl.GetShaderi(fragmentShader, gl.COMPILE_STATUS))
 	if status != gl.TRUE {
 		return dumpShaderError(fragmentShader, name, "vert")
 	}
@@ -62,7 +58,7 @@ func (s *glShader) createShader(name, header, opts, vShader, fShader string) err
 	gl.AttachShader(program, fragmentShader)
 
 	gl.LinkProgram(program)
-	gl.GetProgramiv(program, gl.LINK_STATUS, &status)
+	status = gl.Enum(gl.GetProgrami(program, gl.LINK_STATUS))
 	if status != gl.TRUE {
 		return dumpProgramError(program, name)
 	}
@@ -78,13 +74,13 @@ func (s *glShader) createShader(name, header, opts, vShader, fShader string) err
 }
 
 func (s *glShader) deleteShader() {
-	if s.program != 0 {
+	if s.program.Valid() {
 		gl.DeleteProgram(s.program)
 	}
-	if s.vertex != 0 {
+	if s.vertex.Valid() {
 		gl.DeleteShader(s.vertex)
 	}
-	if s.fragment != 0 {
+	if s.fragment.Valid() {
 		gl.DeleteShader(s.fragment)
 	}
 }
@@ -108,8 +104,8 @@ type glContext struct {
 	shader       glShader
 	view         [2]float32
 	textures     []*glTexture
-	textureID    int32
-	vertexBuffer uint32 //gl.Buffer
+	textureID    int
+	vertexBuffer gl.Buffer
 	flags        CreateFlags
 	calls        []glCall
 	paths        []glPath
@@ -117,12 +113,12 @@ type glContext struct {
 	uniforms     []glFragUniforms
 
 	stencilMask     uint32
-	stencilFunc     uint32 //gl.Enum
-	stencilFuncRef  int32
+	stencilFunc     gl.Enum
+	stencilFuncRef  int
 	stencilFuncMask uint32
 }
 
-func (c *glContext) findTexture(id int32) *glTexture {
+func (c *glContext) findTexture(id int) *glTexture {
 	for _, texture := range c.textures {
 		if texture.id == id {
 			return texture
@@ -131,19 +127,19 @@ func (c *glContext) findTexture(id int32) *glTexture {
 	return nil
 }
 
-func (c *glContext) deleteTexture(id int32) error {
+func (c *glContext) deleteTexture(id int) error {
 	tex := c.findTexture(id)
 	if tex != nil && (tex.flags&ImageNoDelete) == 0 {
-		gl.DeleteTextures(1, []uint32{tex.tex})
+		gl.DeleteTexture(tex.tex)
 		tex.id = 0
 		return nil
 	}
 	return errors.New("can't find texture")
 }
 
-func (c *glContext) bindTexture(tex *uint32) {
+func (c *glContext) bindTexture(tex *gl.Texture) {
 	if tex == nil {
-		gl.BindTexture(gl.TEXTURE_2D, uint32(0))
+		gl.BindTexture(gl.TEXTURE_2D, gl.Texture{})
 	} else {
 		gl.BindTexture(gl.TEXTURE_2D, *tex)
 	}
@@ -156,7 +152,7 @@ func (c *glContext) setStencilMask(mask uint32) {
 	}
 }
 
-func (c *glContext) setStencilFunc(fun uint32 /*gl.Enum*/, ref int32, mask uint32) {
+func (c *glContext) setStencilFunc(fun gl.Enum, ref int, mask uint32) {
 	if c.stencilFunc != fun || c.stencilFuncRef != ref || c.stencilFuncMask != mask {
 		c.stencilFunc = fun
 		c.stencilFuncRef = ref
@@ -171,7 +167,7 @@ func (c *glContext) checkError(str string) {
 	}
 	err := gl.GetError()
 	if err != gl.NO_ERROR {
-		dumpLog("Error %08x after %s\n", err, str)
+		log.Printf("Error %08x after %s\n", err, str)
 	}
 }
 
@@ -181,14 +177,14 @@ func (c *glContext) allocVertexMemory(size int) int {
 	return offset
 }
 
-func (c *glContext) allocFragUniforms(n int32) ([]glFragUniforms, int32) {
-	ret := int32(len(c.uniforms))
+func (c *glContext) allocFragUniforms(n int) ([]glFragUniforms, int) {
+	ret := len(c.uniforms)
 	c.uniforms = append(c.uniforms, make([]glFragUniforms, n)...)
 	return c.uniforms[ret:], ret
 }
 
-func (c *glContext) allocPath(n int32) ([]glPath, int32) {
-	ret := int32(len(c.paths))
+func (c *glContext) allocPath(n int) ([]glPath, int) {
+	ret := len(c.paths)
 	c.paths = append(c.paths, make([]glPath, n)...)
 	return c.paths[ret:], ret
 }
@@ -261,15 +257,15 @@ func (c *glContext) convertPaint(frag *glFragUniforms, paint *Paint, scissor *nv
 	return nil
 }
 
-func (c *glContext) setUniforms(uniformOffset, image int32) {
+func (c *glContext) setUniforms(uniformOffset, image int) {
 	frag := c.uniforms[uniformOffset]
-	gl.Uniform4fv(c.shader.locations[glnvgLocFRAG], int32(len(frag)), &frag[0])
+	gl.Uniform4fv(c.shader.locations[glnvgLocFRAG], frag[:])
 
 	if image != 0 {
 		c.bindTexture(&c.findTexture(image).tex)
 		checkError(c, "tex paint tex")
 	} else {
-		c.bindTexture(nil)
+		c.bindTexture(&gl.Texture{})
 	}
 }
 
@@ -280,7 +276,7 @@ func (c *glContext) fill(call *glCall) {
 	gl.Enable(gl.STENCIL_TEST)
 	c.setStencilMask(0xff)
 	c.setStencilFunc(gl.ALWAYS, 0x00, 0xff)
-	gl.ColorMask(0x00, 0x00, 0x00, 0x00)
+	gl.ColorMask(false, false, false, false)
 
 	// set bindpoint for solid loc
 	c.setUniforms(call.uniformOffset, 0)
@@ -297,7 +293,7 @@ func (c *glContext) fill(call *glCall) {
 	gl.Enable(gl.CULL_FACE)
 
 	// Draw anti-aliased pixels
-	gl.ColorMask(0x00, 0x00, 0x00, 0x00)
+	gl.ColorMask(true, true, true, true)
 	c.setUniforms(call.uniformOffset+1, call.image)
 
 	if c.flags&AntiAlias != 0 {
@@ -364,7 +360,7 @@ func (c *glContext) stroke(call *glCall) {
 		}
 
 		// Clear stencil buffer.
-		gl.ColorMask(0x00, 0x00, 0x00, 0x00)
+		gl.ColorMask(false, false, false, false)
 		c.setStencilFunc(gl.ALWAYS, 0x00, 0xff)
 		gl.StencilOp(gl.ZERO, gl.ZERO, gl.ZERO)
 		checkError(c, "stroke fill 1")
@@ -372,7 +368,7 @@ func (c *glContext) stroke(call *glCall) {
 			path := &paths[i]
 			gl.DrawArrays(gl.TRIANGLE_STRIP, path.strokeOffset, path.strokeCount)
 		}
-		gl.ColorMask(0x00, 0x00, 0x00, 0x00)
+		gl.ColorMask(true, true, true, true)
 		gl.Disable(gl.STENCIL_TEST)
 	} else {
 		c.setUniforms(call.uniformOffset, call.image)
@@ -425,27 +421,27 @@ func (p *glParams) renderCreate() error {
 	checkError(context, "init")
 	context.shader.getUniforms()
 
-	context.vertexBuffer = 0 //gl.CreateBuffer()
-	context.vertexBuffer = 0 //gl.CreateBuffer()
+	context.vertexBuffer = gl.CreateBuffer()
+	context.vertexBuffer = gl.CreateBuffer()
 
 	checkError(context, "create done")
 	gl.Finish()
 	return nil
 }
 
-func (p *glParams) renderCreateTexture(texType nvgTextureType, w, h int32, flags ImageFlags, data []byte) int32 {
+func (p *glParams) renderCreateTexture(texType nvgTextureType, w, h int, flags ImageFlags, data []byte) int {
 	if nearestPow2(w) != w || nearestPow2(h) != h {
 		if (flags&ImageRepeatX) != 0 || (flags&ImageRepeatY) != 0 {
-			dumpLog("Repeat X/Y is not supported for non power-of-two textures (%d x %d)\n", w, h)
+			log.Printf("Repeat X/Y is not supported for non power-of-two textures (%d x %d)\n", w, h)
 			flags &= ^(ImageRepeatY | ImageRepeatX)
 		}
 		if (flags & ImageGenerateMipmaps) != 0 {
-			dumpLog("Mip-maps is not support for non power-of-two textures (%d x %d)\n", w, h)
+			log.Printf("Mip-maps is not support for non power-of-two textures (%d x %d)\n", w, h)
 			flags &= ^ImageGenerateMipmaps
 		}
 	}
 	tex := p.context.allocTexture()
-	tex.tex = 0 //gl.CreateTexture()
+	tex.tex = gl.CreateTexture()
 	tex.width = w
 	tex.height = h
 	tex.texType = texType
@@ -456,10 +452,10 @@ func (p *glParams) renderCreateTexture(texType nvgTextureType, w, h int32, flags
 
 	if texType == nvgTextureRGBA {
 		data = prepareTextureBuffer(data, w, h, 4)
-		gl.TexImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&data))
+		gl.TexImage2D(gl.TEXTURE_2D, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data)
 	} else {
 		data = prepareTextureBuffer(data, w, h, 1)
-		gl.TexImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, unsafe.Pointer(&data))
+		gl.TexImage2D(gl.TEXTURE_2D, 0, w, h, gl.LUMINANCE, gl.UNSIGNED_BYTE, data)
 	}
 
 	if (flags & ImageGenerateMipmaps) != 0 {
@@ -488,23 +484,23 @@ func (p *glParams) renderCreateTexture(texType nvgTextureType, w, h int32, flags
 	}
 
 	p.context.checkError("create tex")
-	p.context.bindTexture(nil)
+	p.context.bindTexture(&gl.Texture{})
 
 	return tex.id
 }
 
-func (p *glParams) renderDeleteTexture(id int32) error {
+func (p *glParams) renderDeleteTexture(id int) error {
 	tex := p.context.findTexture(id)
-	if tex.tex != 0 && (tex.flags&ImageNoDelete) == 0 {
-		gl.DeleteTextures(1, []uint32{tex.tex})
+	if tex.tex.Valid() && (tex.flags&ImageNoDelete) == 0 {
+		gl.DeleteTexture(tex.tex)
 		tex.id = 0
-		tex.tex = 0
+		tex.tex = gl.Texture{}
 		return nil
 	}
 	return errors.New("invalid texture in GLParams.deleteTexture")
 }
 
-func (p *glParams) renderUpdateTexture(image, x, y, w, h int32, data []byte) error {
+func (p *glParams) renderUpdateTexture(image, x, y, w, h int, data []byte) error {
 	tex := p.context.findTexture(image)
 	if tex == nil {
 		return errors.New("invalid texture in GLParams.updateTexture")
@@ -521,9 +517,9 @@ func (p *glParams) renderUpdateTexture(image, x, y, w, h int32, data []byte) err
 	w = tex.width
 
 	if tex.texType == nvgTextureRGBA {
-		gl.TexSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&data[0]))
+		gl.TexSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data)
 	} else {
-		gl.TexSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.LUMINANCE, gl.UNSIGNED_BYTE, unsafe.Pointer(&data[0]))
+		gl.TexSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.LUMINANCE, gl.UNSIGNED_BYTE, data)
 	}
 
 	gl.PixelStorei(gl.UNPACK_ALIGNMENT, 4)
@@ -533,7 +529,7 @@ func (p *glParams) renderUpdateTexture(image, x, y, w, h int32, data []byte) err
 	return nil
 }
 
-func (p *glParams) renderGetTextureSize(image int32) (int32, int32, error) {
+func (p *glParams) renderGetTextureSize(image int) (int, int, error) {
 	tex := p.context.findTexture(image)
 	if tex == nil {
 		return -1, -1, errors.New("invalid texture in GLParams.getTextureSize")
@@ -541,7 +537,7 @@ func (p *glParams) renderGetTextureSize(image int32) (int32, int32, error) {
 	return tex.width, tex.height, nil
 }
 
-func (p *glParams) renderViewport(width, height int32) {
+func (p *glParams) renderViewport(width, height int) {
 	p.context.view[0] = float32(width)
 	p.context.view[1] = float32(height)
 }
@@ -567,12 +563,12 @@ func (p *glParams) renderFlush() {
 		gl.Enable(gl.BLEND)
 		gl.Disable(gl.DEPTH_TEST)
 		gl.Disable(gl.SCISSOR_TEST)
-		gl.ColorMask(1, 1, 1, 1)
+		gl.ColorMask(true, true, true, true)
 		gl.StencilMask(0xffffffff)
 		gl.StencilOp(gl.KEEP, gl.KEEP, gl.KEEP)
 		gl.StencilFunc(gl.ALWAYS, 0, 0xffffffff)
 		gl.ActiveTexture(gl.TEXTURE0)
-		gl.BindTexture(gl.TEXTURE_2D, 0)
+		gl.BindTexture(gl.TEXTURE_2D, gl.Texture{})
 		c.stencilMask = 0xffffffff
 		c.stencilFunc = gl.ALWAYS
 		c.stencilFuncRef = 0
@@ -581,18 +577,15 @@ func (p *glParams) renderFlush() {
 		//dumpLog("vertex:", c.vertexes)
 		// Upload vertex data
 		gl.BindBuffer(gl.ARRAY_BUFFER, c.vertexBuffer)
-		gl.BufferData(gl.ARRAY_BUFFER, len(b), unsafe.Pointer(unsafe.Alignof(b)), gl.STREAM_DRAW)
-		gl.EnableVertexAttribArray(uint32(c.shader.vertexAttrib))
-		gl.EnableVertexAttribArray(uint32(c.shader.tcoordAttrib))
-		n0 := 0
-		n8 := 8
-		gl.VertexAttribPointer(uint32(c.shader.vertexAttrib), 2, gl.FLOAT, 0, 4*4, unsafe.Pointer(&n0))
-		gl.VertexAttribPointer(uint32(c.shader.tcoordAttrib), 2, gl.FLOAT, 0, 4*4, unsafe.Pointer(&n8))
+		gl.BufferData(gl.ARRAY_BUFFER, b, gl.STREAM_DRAW)
+		gl.EnableVertexAttribArray(c.shader.vertexAttrib)
+		gl.EnableVertexAttribArray(c.shader.tcoordAttrib)
+		gl.VertexAttribPointer(c.shader.vertexAttrib, 2, gl.FLOAT, false, 4*4, 0)
+		gl.VertexAttribPointer(c.shader.tcoordAttrib, 2, gl.FLOAT, false, 4*4, 8)
 
 		// Set view and texture just once per frame.
 		gl.Uniform1i(c.shader.locations[glnvgLocTEX], 0)
-		gl.Uniform2fv(c.shader.locations[glnvgLocVIEWSIZE], 1, &c.view[0])
-		//gl.Uniform2fv(c.shader.locations[glnvgLocVIEWSIZE], 1, &c.view[1])
+		gl.Uniform2fv(c.shader.locations[glnvgLocVIEWSIZE], c.view[:])
 
 		for i := range c.calls {
 			call := &c.calls[i]
@@ -609,11 +602,11 @@ func (p *glParams) renderFlush() {
 				c.triangleStrip(call)
 			}
 		}
-		gl.DisableVertexAttribArray(uint32(c.shader.vertexAttrib))
-		gl.DisableVertexAttribArray(uint32(c.shader.tcoordAttrib))
+		gl.DisableVertexAttribArray(c.shader.vertexAttrib)
+		gl.DisableVertexAttribArray(c.shader.tcoordAttrib)
 		gl.Disable(gl.CULL_FACE)
-		gl.BindBuffer(gl.ARRAY_BUFFER, 0)
-		gl.UseProgram(0)
+		gl.BindBuffer(gl.ARRAY_BUFFER, gl.Buffer{})
+		gl.UseProgram(gl.Program{})
 		c.bindTexture(nil)
 	}
 	c.vertexes = c.vertexes[:0]
@@ -626,7 +619,7 @@ func (p *glParams) renderFill(paint *Paint, scissor *nvgScissor, fringe float32,
 	c := p.context
 	var glPaths []glPath
 	c.calls = append(c.calls, glCall{
-		pathCount: int32(len(paths)),
+		pathCount: len(paths),
 		image:     paint.image,
 	})
 	call := &c.calls[len(c.calls)-1]
@@ -644,11 +637,11 @@ func (p *glParams) renderFill(paint *Paint, scissor *nvgScissor, fringe float32,
 		glPath := &glPaths[i]
 		path := &paths[i]
 
-		fillCount := int32(len(path.fills))
+		fillCount := len(path.fills)
 		if fillCount > 0 {
-			glPath.fillOffset = int32(vertexOffset / 4)
+			glPath.fillOffset = vertexOffset / 4
 			glPath.fillCount = fillCount
-			for j := 0; int32(j) < fillCount; j++ {
+			for j := 0; j < fillCount; j++ {
 				vertex := &path.fills[j]
 				c.vertexes[vertexOffset] = vertex.x
 				c.vertexes[vertexOffset+1] = vertex.y
@@ -661,11 +654,11 @@ func (p *glParams) renderFill(paint *Paint, scissor *nvgScissor, fringe float32,
 			glPath.fillCount = 0
 		}
 
-		strokeCount := int32(len(path.strokes))
+		strokeCount := len(path.strokes)
 		if strokeCount > 0 {
-			glPath.strokeOffset = int32(vertexOffset / 4)
+			glPath.strokeOffset = vertexOffset / 4
 			glPath.strokeCount = strokeCount
-			for j := 0; int32(j) < strokeCount; j++ {
+			for j := 0; j < strokeCount; j++ {
 				vertex := &path.strokes[j]
 				c.vertexes[vertexOffset] = vertex.x
 				c.vertexes[vertexOffset+1] = vertex.y
@@ -680,7 +673,7 @@ func (p *glParams) renderFill(paint *Paint, scissor *nvgScissor, fringe float32,
 	}
 
 	// Quad
-	call.triangleOffset = int32(vertexOffset / 4)
+	call.triangleOffset = vertexOffset / 4
 	call.triangleCount = 6
 
 	c.vertexes[vertexOffset] = bounds[0]
@@ -745,8 +738,8 @@ func (p *glParams) renderStroke(paint *Paint, scissor *nvgScissor, fringe float3
 	p.context.calls = append(c.calls, glCall{})
 	call := &c.calls[len(c.calls)-1]
 	call.callType = glnvgSTROKE
-	glPaths, call.pathOffset = c.allocPath(int32(len(paths)))
-	call.pathCount = int32(len(paths))
+	glPaths, call.pathOffset = c.allocPath(len(paths))
+	call.pathCount = len(paths)
 	call.image = paint.image
 
 	// Allocate vertices for all the paths
@@ -756,11 +749,11 @@ func (p *glParams) renderStroke(paint *Paint, scissor *nvgScissor, fringe float3
 		glPath := &glPaths[i]
 		path := &paths[i]
 
-		strokeCount := int32(len(path.strokes))
+		strokeCount := len(path.strokes)
 		if strokeCount > 0 {
-			glPath.strokeOffset = int32(vertexOffset / 4)
+			glPath.strokeOffset = vertexOffset / 4
 			glPath.strokeCount = strokeCount
-			for j := 0; int32(j) < strokeCount; j++ {
+			for j := 0; j < strokeCount; j++ {
 				vertex := &path.strokes[j]
 				c.vertexes[vertexOffset] = vertex.x
 				c.vertexes[vertexOffset+1] = vertex.y
@@ -796,19 +789,19 @@ func (p *glParams) renderStroke(paint *Paint, scissor *nvgScissor, fringe float3
 func (p *glParams) renderTriangles(paint *Paint, scissor *nvgScissor, vertexes []nvgVertex) {
 	c := p.context
 
-	vertexCount := int32(len(vertexes))
-	vertexOffset := c.allocVertexMemory(int(vertexCount))
+	vertexCount := len(vertexes)
+	vertexOffset := c.allocVertexMemory(vertexCount)
 	callIndex := len(c.calls)
 
 	c.calls = append(c.calls, glCall{
 		callType:       glnvgTRIANGLES,
 		image:          paint.image,
-		triangleOffset: int32(vertexOffset / 4),
+		triangleOffset: vertexOffset / 4,
 		triangleCount:  vertexCount,
 	})
 	call := &c.calls[callIndex]
 
-	for i := 0; int32(i) < vertexCount; i++ {
+	for i := 0; i < vertexCount; i++ {
 		vertex := &vertexes[i]
 		c.vertexes[vertexOffset] = vertex.x
 		c.vertexes[vertexOffset+1] = vertex.y
@@ -836,8 +829,8 @@ func (p *glParams) renderTriangleStrip(paint *Paint, scissor *nvgScissor, vertex
 	c.calls = append(c.calls, glCall{
 		callType:       glnvgTRIANGLESTRIP,
 		image:          paint.image,
-		triangleOffset: int32(vertexOffset / 4),
-		triangleCount:  int32(vertexCount),
+		triangleOffset: vertexOffset / 4,
+		triangleCount:  vertexCount,
 	})
 	call := &c.calls[callIndex]
 
@@ -862,32 +855,28 @@ func (p *glParams) renderTriangleStrip(paint *Paint, scissor *nvgScissor, vertex
 func (p *glParams) renderDelete() {
 	c := p.context
 	c.shader.deleteShader()
-	if c.vertexBuffer != 0 {
-		gl.DeleteBuffers(1, []uint32{c.vertexBuffer})
+	if c.vertexBuffer.Valid() {
+		gl.DeleteBuffer(c.vertexBuffer)
 	}
 	for _, texture := range c.textures {
-		if texture.tex != 0 && (texture.flags&ImageNoDelete) == 0 {
-			gl.DeleteTextures(1, []uint32{texture.tex})
+		if texture.tex.Valid() && (texture.flags&ImageNoDelete) == 0 {
+			gl.DeleteTexture(texture.tex)
 		}
 	}
 	p.context = nil
 }
 
-func dumpShaderError(shader uint32, name, typeName string) error {
-	var str []byte
-	var lent int32
-	gl.GetShaderInfoLog(shader, 32, &lent, str)
+func dumpShaderError(shader gl.Shader, name, typeName string) error {
+	str := gl.GetShaderInfoLog(shader)
 	msg := fmt.Sprintf("Shader %s/%s error:\n%s\n", name, typeName, str)
-	dumpLog(msg)
+	log.Print(msg)
 	return errors.New(msg)
 }
 
-func dumpProgramError(program uint32, name string) error {
-	var str []byte
-	var lent int32
-	gl.GetProgramInfoLog(program, 32, &lent, str)
+func dumpProgramError(program gl.Program, name string) error {
+	str := gl.GetProgramInfoLog(program)
 	msg := fmt.Sprintf("Program %s error:\n%s\n", name, str)
-	dumpLog(msg)
+	log.Print(msg)
 	return errors.New(msg)
 }
 
@@ -897,7 +886,7 @@ func checkError(p *glContext, str string) {
 	}
 	err := gl.GetError()
 	if err != gl.NO_ERROR {
-		dumpLog("Error %08x after %s\n", int(err), str)
+		log.Printf("Error %08x after %s\n", int(err), str)
 	}
 }
 

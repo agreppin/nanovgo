@@ -8,18 +8,18 @@ import (
 	"log"
 	"os"
 
-	"github.com/shibukawa/nanovgo/fontstashmini"
+	"nanovgo/fontstashmini"
 )
 
 // Context is an entry point object to use NanoVGo API and created by NewContext() function.
 //
-// State Handling
+// # State Handling
 //
 // NanoVG contains state which represents how paths will be rendered.
 // The state contains transform, fill and stroke styles, text and font styles,
 // and scissor clipping.
 //
-// Render styles
+// # Render styles
 //
 // Fill and stroke render style can be either a solid color or a paint which is a gradient or a pattern.
 // Solid color is simply defined as a color value, different kinds of paints can be created
@@ -27,14 +27,16 @@ import (
 //
 // Current render style can be saved and restored using Save() and Restore().
 //
-// Transforms
+// # Transforms
 //
 // The paths, gradients, patterns and scissor region are transformed by an transformation
 // matrix at the time when they are passed to the API.
 // The current transformation matrix is a affine matrix:
-//   [sx kx tx]
-//   [ky sy ty]
-//   [ 0  0  1]
+//
+//	[sx kx tx]
+//	[ky sy ty]
+//	[ 0  0  1]
+//
 // Where: sx,sy define scaling, kx,ky skewing, and tx,ty translation.
 // The last row is assumed to be 0,0,1 and is not stored.
 //
@@ -43,23 +45,23 @@ import (
 //
 // Current coordinate system (transformation) can be saved and restored using Save() and Restore().
 //
-// Images
+// # Images
 //
 // NanoVG allows you to load jpg, png, psd, tga, pic and gif files to be used for rendering.
 // In addition you can upload your own image. The image loading is provided by stb_image.
 // The parameter imageFlags is combination of flags defined in ImageFlags.
 //
-// Paints
+// # Paints
 //
 // NanoVG supports four types of paints: linear gradient, box gradient, radial gradient and image pattern.
 // These can be used as paints for strokes and fills.
 //
-// Scissoring
+// # Scissoring
 //
 // Scissoring allows you to clip the rendering into a rectangle. This is useful for various
 // user interface cases like rendering a text edit or a timeline.
 //
-// Paths
+// # Paths
 //
 // Drawing a new shape starts with BeginPath(), it clears all the currently defined paths.
 // Then you define one or more paths and sub-paths which describe the shape. The are functions
@@ -75,7 +77,7 @@ import (
 //
 // The curve segments and sub-paths are transformed by the current transform.
 //
-// Text
+// # Text
 //
 // NanoVG allows you to load .ttf files and use the font to render text.
 //
@@ -99,10 +101,10 @@ import (
 // While this may sound a little odd, the setup allows you to always render the
 // same way regardless of scaling. I.e. following works regardless of scaling:
 //
-//              vg.TextBounds(x, y, "Text me up.", bounds)
-//              vg.BeginPath()
-//              vg.RoundedRect(bounds[0],bounds[1], bounds[2]-bounds[0], bounds[3]-bounds[1])
-//              vg.Fill()
+//	vg.TextBounds(x, y, "Text me up.", bounds)
+//	vg.BeginPath()
+//	vg.RoundedRect(bounds[0],bounds[1], bounds[2]-bounds[0], bounds[3]-bounds[1])
+//	vg.Fill()
 //
 // Note: currently only solid color fill is supported for text.
 type Context struct {
@@ -117,24 +119,24 @@ type Context struct {
 	fringeWidth    float32
 	devicePxRatio  float32
 	fs             *fontstashmini.FontStash
-	fontImages     []int32
-	fontImageIdx   int32
-	drawCallCount  int32
-	fillTriCount   int32
-	strokeTriCount int32
-	textTriCount   int32
+	fontImages     []int
+	fontImageIdx   int
+	drawCallCount  int
+	fillTriCount   int
+	strokeTriCount int
+	textTriCount   int
 }
 
 // Delete is called when tearing down NanoVGo context
-func (c *Context) Delete() {
+func (ctx *Context) Delete() {
 
-	for i, fontImage := range c.fontImages {
+	for i, fontImage := range ctx.fontImages {
 		if fontImage != 0 {
-			c.DeleteImage(fontImage)
-			c.fontImages[i] = 0
+			ctx.DeleteImage(fontImage)
+			ctx.fontImages[i] = 0
 		}
 	}
-	c.params.renderDelete()
+	ctx.params.renderDelete()
 }
 
 // BeginFrame begins drawing a new frame
@@ -145,232 +147,235 @@ func (c *Context) Delete() {
 // For example, GLFW returns two dimension for an opened window: window size and
 // frame buffer size. In that case you would set windowWidth/Height to the window size
 // devicePixelRatio to: frameBufferWidth / windowWidth.
-func (c *Context) BeginFrame(windowWidth, windowHeight int32, devicePixelRatio float32) {
-	c.states = c.states[:0]
-	c.Save()
-	c.Reset()
+func (ctx *Context) BeginFrame(windowWidth, windowHeight int, devicePixelRatio float32) {
+	ctx.states = ctx.states[:0]
+	ctx.Save()
+	ctx.Reset()
 
-	c.setDevicePixelRatio(devicePixelRatio)
-	c.params.renderViewport(windowWidth, windowHeight)
+	ctx.setDevicePixelRatio(devicePixelRatio)
+	ctx.params.renderViewport(windowWidth, windowHeight)
 
-	c.drawCallCount = 0
-	c.fillTriCount = 0
-	c.strokeTriCount = 0
-	c.textTriCount = 0
+	ctx.drawCallCount = 0
+	ctx.fillTriCount = 0
+	ctx.strokeTriCount = 0
+	ctx.textTriCount = 0
 }
 
 // CancelFrame cancels drawing the current frame.
-func (c *Context) CancelFrame() {
-	c.params.renderCancel()
+func (ctx *Context) CancelFrame() {
+	ctx.params.renderCancel()
 }
 
 // EndFrame ends drawing flushing remaining render state.
-func (c *Context) EndFrame() {
-	c.params.renderFlush()
-	if c.fontImageIdx != 0 {
-		fontImage := c.fontImages[c.fontImageIdx]
+func (ctx *Context) EndFrame() {
+	ctx.params.renderFlush()
+	if ctx.fontImageIdx != 0 {
+		fontImage := ctx.fontImages[ctx.fontImageIdx]
 		if fontImage == 0 {
 			return
 		}
-		iw, ih, _ := c.ImageSize(fontImage)
+		iw, ih, _ := ctx.ImageSize(fontImage)
 		j := 0
-		for i := 0; int32(i) < c.fontImageIdx; i++ {
-			nw, nh, _ := c.ImageSize(c.fontImages[i])
+		for i := 0; i < ctx.fontImageIdx; i++ {
+			nw, nh, _ := ctx.ImageSize(ctx.fontImages[i])
 			if nw < iw || nh < ih {
-				c.DeleteImage(c.fontImages[i])
+				ctx.DeleteImage(ctx.fontImages[i])
 			} else {
-				c.fontImages[j] = c.fontImages[i]
+				ctx.fontImages[j] = ctx.fontImages[i]
 				j++
 			}
 		}
 		// make current font image to first
-		c.fontImages[j] = c.fontImages[0]
+		ctx.fontImages[j] = ctx.fontImages[0]
 		j++
-		c.fontImages[0] = fontImage
-		c.fontImageIdx = 0
+		ctx.fontImages[0] = fontImage
+		ctx.fontImageIdx = 0
 		// clear all image after j
 		for i := j; i < nvgMaxFontImages; i++ {
-			c.fontImages[i] = 0
+			ctx.fontImages[i] = 0
 		}
 	}
 }
 
 // Save pushes and saves the current render state into a state stack.
 // A matching Restore() must be used to restore the state.
-func (c *Context) Save() {
-	if len(c.states) >= nvgMaxStates {
+func (ctx *Context) Save() {
+	if len(ctx.states) >= nvgMaxStates {
 		return
 	}
-	if len(c.states) > 0 {
-		c.states = append(c.states, c.states[len(c.states)-1])
+	if len(ctx.states) > 0 {
+		ctx.states = append(ctx.states, ctx.states[len(ctx.states)-1])
 	} else {
-		c.states = append(c.states, nvgState{})
+		ctx.states = append(ctx.states, nvgState{})
 	}
 }
 
 // Restore pops and restores current render state.
-func (c *Context) Restore() {
-	nStates := len(c.states)
+func (ctx *Context) Restore() {
+	nStates := len(ctx.states)
 	if nStates > 1 {
-		c.states = c.states[:nStates-1]
+		ctx.states = ctx.states[:nStates-1]
 	}
 }
 
 // Block makes Save/Restore block.
-func (c *Context) Block(block func()) {
-	c.Save()
-	defer c.Restore()
+func (ctx *Context) Block(block func()) {
+	ctx.Save()
+	defer ctx.Restore()
 	block()
 }
 
 // Reset resets current render state to default values. Does not affect the render state stack.
-func (c *Context) Reset() {
-	c.getState().reset()
+func (ctx *Context) Reset() {
+	ctx.getState().reset()
 }
 
 // SetStrokeWidth sets the stroke width of the stroke style.
-func (c *Context) SetStrokeWidth(width float32) {
-	c.getState().strokeWidth = width
+func (ctx *Context) SetStrokeWidth(width float32) {
+	ctx.getState().strokeWidth = width
 }
 
 // StrokeWidth gets the stroke width of the stroke style.
-func (c *Context) StrokeWidth() float32 {
-	return c.getState().strokeWidth
+func (ctx *Context) StrokeWidth() float32 {
+	return ctx.getState().strokeWidth
 }
 
 // SetMiterLimit sets the miter limit of the stroke style.
 // Miter limit controls when a sharp corner is beveled.
-func (c *Context) SetMiterLimit(limit float32) {
-	c.getState().miterLimit = limit
+func (ctx *Context) SetMiterLimit(limit float32) {
+	ctx.getState().miterLimit = limit
 }
 
 // MiterLimit gets the miter limit of the stroke style.
-func (c *Context) MiterLimit() float32 {
-	return c.getState().miterLimit
+func (ctx *Context) MiterLimit() float32 {
+	return ctx.getState().miterLimit
 }
 
 // SetLineCap sets how the end of the line (cap) is drawn,
 // Can be one of: Butt (default), Round, Squre.
-func (c *Context) SetLineCap(cap LineCap) {
-	c.getState().lineCap = cap
+func (ctx *Context) SetLineCap(cap LineCap) {
+	ctx.getState().lineCap = cap
 }
 
 // LineCap gets how the end of the line (cap) is drawn,
-func (c *Context) LineCap() LineCap {
-	return c.getState().lineCap
+func (ctx *Context) LineCap() LineCap {
+	return ctx.getState().lineCap
 }
 
 // SetLineJoin sets how sharp path corners are drawn.
 // Can be one of Miter (default), Round, Bevel.
-func (c *Context) SetLineJoin(joint LineCap) {
-	c.getState().lineJoin = joint
+func (ctx *Context) SetLineJoin(joint LineCap) {
+	ctx.getState().lineJoin = joint
 }
 
 // LineJoin gets how sharp path corners are drawn.
-func (c *Context) LineJoin() LineCap {
-	return c.getState().lineJoin
+func (ctx *Context) LineJoin() LineCap {
+	return ctx.getState().lineJoin
 }
 
 // SetGlobalAlpha sets the transparency applied to all rendered shapes.
 // Already transparent paths will get proportionally more transparent as well.
-func (c *Context) SetGlobalAlpha(alpha float32) {
-	c.getState().alpha = alpha
+func (ctx *Context) SetGlobalAlpha(alpha float32) {
+	ctx.getState().alpha = alpha
 }
 
 // GlobalAlpha gets the transparency applied to all rendered shapes.
-func (c *Context) GlobalAlpha() float32 {
-	return c.getState().alpha
+func (ctx *Context) GlobalAlpha() float32 {
+	return ctx.getState().alpha
 }
 
 // SetTransform premultiplies current coordinate system by specified matrix.
-func (c *Context) SetTransform(t TransformMatrix) {
-	state := c.getState()
+func (ctx *Context) SetTransform(t TransformMatrix) {
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(t)
 }
 
 // SetTransformByValue premultiplies current coordinate system by specified matrix.
 // The parameters are interpreted as matrix as follows:
-//   [a c e]
-//   [b d f]
-//   [0 0 1]
-func (cx *Context) SetTransformByValue(a, b, c, d, e, f float32) {
+//
+//	[a c e]
+//	[b d f]
+//	[0 0 1]
+func (ctx *Context) SetTransformByValue(a, b, c, d, e, f float32) {
 	t := TransformMatrix{a, b, c, d, e, f}
-	state := cx.getState()
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(t)
 }
 
 // ResetTransform resets current transform to a identity matrix.
-func (c *Context) ResetTransform() {
-	state := c.getState()
+func (ctx *Context) ResetTransform() {
+	state := ctx.getState()
 	state.xform = IdentityMatrix()
 }
 
 // Translate translates current coordinate system.
-func (c *Context) Translate(x, y float32) {
-	state := c.getState()
+func (ctx *Context) Translate(x, y float32) {
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(TranslateMatrix(x, y))
 }
 
 // Rotate rotates current coordinate system. Angle is specified in radians.
-func (c *Context) Rotate(angle float32) {
-	state := c.getState()
+func (ctx *Context) Rotate(angle float32) {
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(RotateMatrix(angle))
 }
 
 // SkewX skews the current coordinate system along X axis. Angle is specified in radians.
-func (c *Context) SkewX(angle float32) {
-	state := c.getState()
+func (ctx *Context) SkewX(angle float32) {
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(SkewXMatrix(angle))
 }
 
 // SkewY skews the current coordinate system along Y axis. Angle is specified in radians.
-func (c *Context) SkewY(angle float32) {
-	state := c.getState()
+func (ctx *Context) SkewY(angle float32) {
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(SkewYMatrix(angle))
 }
 
 // Scale scales the current coordinate system.
-func (c *Context) Scale(x, y float32) {
-	state := c.getState()
+func (ctx *Context) Scale(x, y float32) {
+	state := ctx.getState()
 	state.xform = state.xform.PreMultiply(ScaleMatrix(x, y))
 }
 
 // CurrentTransform returns the top part (a-f) of the current transformation matrix.
-//   [a c e]
-//   [b d f]
-//   [0 0 1]
+//
+//	[a c e]
+//	[b d f]
+//	[0 0 1]
+//
 // There should be space for 6 floats in the return buffer for the values a-f.
-func (c *Context) CurrentTransform() TransformMatrix {
-	return c.getState().xform
+func (ctx *Context) CurrentTransform() TransformMatrix {
+	return ctx.getState().xform
 }
 
 // SetStrokeColor sets current stroke style to a solid color.
-func (c *Context) SetStrokeColor(color Color) {
-	c.getState().stroke.setPaintColor(color)
+func (ctx *Context) SetStrokeColor(color Color) {
+	ctx.getState().stroke.setPaintColor(color)
 }
 
 // SetStrokePaint sets current stroke style to a paint, which can be a one of the gradients or a pattern.
-func (c *Context) SetStrokePaint(paint Paint) {
-	state := c.getState()
+func (ctx *Context) SetStrokePaint(paint Paint) {
+	state := ctx.getState()
 	state.stroke = paint
 	state.stroke.xform = state.stroke.xform.Multiply(state.xform)
 }
 
 // SetFillColor sets current fill style to a solid color.
-func (c *Context) SetFillColor(color Color) {
-	c.getState().fill.setPaintColor(color)
+func (ctx *Context) SetFillColor(color Color) {
+	ctx.getState().fill.setPaintColor(color)
 }
 
 // SetFillPaint sets current fill style to a paint, which can be a one of the gradients or a pattern.
-func (c *Context) SetFillPaint(paint Paint) {
-	state := c.getState()
+func (ctx *Context) SetFillPaint(paint Paint) {
+	state := ctx.getState()
 	state.fill = paint
 	state.fill.xform = state.fill.xform.Multiply(state.xform)
 }
 
 // CreateImage creates image by loading it from the disk from specified file name.
 // Returns handle to the image.
-func (c *Context) CreateImage(filePath string, flags ImageFlags) int32 {
+func (ctx *Context) CreateImage(filePath string, flags ImageFlags) int {
 	file, err := os.Open(filePath)
 	defer file.Close()
 	if err != nil {
@@ -380,28 +385,28 @@ func (c *Context) CreateImage(filePath string, flags ImageFlags) int32 {
 	if err != nil {
 		return 0
 	}
-	return c.CreateImageFromGoImage(flags, img)
+	return ctx.CreateImageFromGoImage(flags, img)
 }
 
 // CreateImageFromMemory creates image by loading it from the specified chunk of memory.
 // Returns handle to the image.
-func (c *Context) CreateImageFromMemory(flags ImageFlags, data []byte) int32 {
+func (ctx *Context) CreateImageFromMemory(flags ImageFlags, data []byte) int {
 	reader := bytes.NewReader(data)
 	img, _, err := image.Decode(reader)
 	if err != nil {
 		return 0
 	}
-	return c.CreateImageFromGoImage(flags, img)
+	return ctx.CreateImageFromGoImage(flags, img)
 }
 
 // CreateImageFromGoImage creates image by loading it from the specified image.Image object.
 // Returns handle to the image.
-func (c *Context) CreateImageFromGoImage(imageFlag ImageFlags, img image.Image) int32 {
+func (ctx *Context) CreateImageFromGoImage(imageFlag ImageFlags, img image.Image) int {
 	bounds := img.Bounds()
 	size := bounds.Size()
 	rgba, ok := img.(*image.RGBA)
 	if ok {
-		return c.CreateImageRGBA(int32(size.X), int32(size.Y), imageFlag, rgba.Pix)
+		return ctx.CreateImageRGBA(size.X, size.Y, imageFlag, rgba.Pix)
 	}
 	rgba = image.NewRGBA(bounds)
 	for x := 0; x < size.X; x++ {
@@ -409,38 +414,38 @@ func (c *Context) CreateImageFromGoImage(imageFlag ImageFlags, img image.Image) 
 			rgba.Set(x, y, img.At(x, y))
 		}
 	}
-	return c.CreateImageRGBA(int32(size.X), int32(size.Y), imageFlag, rgba.Pix)
+	return ctx.CreateImageRGBA(size.X, size.Y, imageFlag, rgba.Pix)
 }
 
 // CreateImageRGBA creates image from specified image data.
 // Returns handle to the image.
-func (c *Context) CreateImageRGBA(w, h int32, imageFlags ImageFlags, data []byte) int32 {
-	return c.params.renderCreateTexture(nvgTextureRGBA, w, h, imageFlags, data)
+func (ctx *Context) CreateImageRGBA(w, h int, imageFlags ImageFlags, data []byte) int {
+	return ctx.params.renderCreateTexture(nvgTextureRGBA, w, h, imageFlags, data)
 }
 
 // UpdateImage updates image data specified by image handle.
-func (c *Context) UpdateImage(img int32, data []byte) error {
-	w, h, err := c.params.renderGetTextureSize(img)
+func (ctx *Context) UpdateImage(img int, data []byte) error {
+	w, h, err := ctx.params.renderGetTextureSize(img)
 	if err != nil {
 		return err
 	}
-	return c.params.renderUpdateTexture(img, 0, 0, w, h, data)
+	return ctx.params.renderUpdateTexture(img, 0, 0, w, h, data)
 }
 
 // ImageSize returns the dimensions of a created image.
-func (c *Context) ImageSize(img int32) (int32, int32, error) {
-	return c.params.renderGetTextureSize(img)
+func (ctx *Context) ImageSize(img int) (int, int, error) {
+	return ctx.params.renderGetTextureSize(img)
 }
 
 // DeleteImage deletes created image.
-func (c *Context) DeleteImage(img int32) {
-	c.params.renderDeleteTexture(img)
+func (ctx *Context) DeleteImage(img int) {
+	ctx.params.renderDeleteTexture(img)
 }
 
 // Scissor sets the current scissor rectangle.
 // The scissor rectangle is transformed by the current transform.
-func (c *Context) Scissor(x, y, w, h float32) {
-	state := c.getState()
+func (ctx *Context) Scissor(x, y, w, h float32) {
+	state := ctx.getState()
 
 	w = maxF(0.0, w)
 	h = maxF(0.0, h)
@@ -455,11 +460,11 @@ func (c *Context) Scissor(x, y, w, h float32) {
 // the current one, the intersection will be done between the specified
 // rectangle and the previous scissor rectangle transformed in the current
 // transform space. The resulting shape is always rectangle.
-func (c *Context) IntersectScissor(x, y, w, h float32) {
-	state := c.getState()
+func (ctx *Context) IntersectScissor(x, y, w, h float32) {
+	state := ctx.getState()
 
 	if state.scissor.extent[0] < 0 {
-		c.Scissor(x, y, w, h)
+		ctx.Scissor(x, y, w, h)
 		return
 	}
 
@@ -470,43 +475,43 @@ func (c *Context) IntersectScissor(x, y, w, h float32) {
 	teX := ex * absF(pXform[0]) * ey * absF(pXform[2])
 	teY := ex * absF(pXform[1]) * ey * absF(pXform[3])
 	rect := intersectRects(pXform[4]-teX, pXform[5]-teY, teX*2, teY*2, x, y, w, h)
-	c.Scissor(rect[0], rect[1], rect[2], rect[3])
+	ctx.Scissor(rect[0], rect[1], rect[2], rect[3])
 }
 
 // ResetScissor resets and disables scissoring.
-func (c *Context) ResetScissor() {
-	state := c.getState()
+func (ctx *Context) ResetScissor() {
+	state := ctx.getState()
 
 	state.scissor.xform = TransformMatrix{0, 0, 0, 0, 0, 0}
 	state.scissor.extent = [2]float32{-1.0, -1.0}
 }
 
 // BeginPath clears the current path and sub-paths.
-func (c *Context) BeginPath() {
-	c.commands = c.commands[:0]
-	c.cache.clearPathCache()
+func (ctx *Context) BeginPath() {
+	ctx.commands = ctx.commands[:0]
+	ctx.cache.clearPathCache()
 }
 
 // MoveTo starts new sub-path with specified point as first point.
-func (c *Context) MoveTo(x, y float32) {
-	c.appendCommand([]float32{float32(nvgMOVETO), x, y})
+func (ctx *Context) MoveTo(x, y float32) {
+	ctx.appendCommand([]float32{float32(nvgMOVETO), x, y})
 }
 
 // LineTo adds line segment from the last point in the path to the specified point.
-func (c *Context) LineTo(x, y float32) {
-	c.appendCommand([]float32{float32(nvgLINETO), x, y})
+func (ctx *Context) LineTo(x, y float32) {
+	ctx.appendCommand([]float32{float32(nvgLINETO), x, y})
 }
 
 // BezierTo adds cubic bezier segment from last point in the path via two control points to the specified point.
-func (c *Context) BezierTo(c1x, c1y, c2x, c2y, x, y float32) {
-	c.appendCommand([]float32{float32(nvgBEZIERTO), c1x, c1y, c2x, c2y, x, y})
+func (ctx *Context) BezierTo(c1x, c1y, c2x, c2y, x, y float32) {
+	ctx.appendCommand([]float32{float32(nvgBEZIERTO), c1x, c1y, c2x, c2y, x, y})
 }
 
 // QuadTo adds quadratic bezier segment from last point in the path via a control point to the specified point.
-func (c *Context) QuadTo(cx, cy, x, y float32) {
-	x0 := c.commandX
-	y0 := c.commandY
-	c.appendCommand([]float32{float32(nvgBEZIERTO),
+func (ctx *Context) QuadTo(cx, cy, x, y float32) {
+	x0 := ctx.commandX
+	y0 := ctx.commandY
+	ctx.appendCommand([]float32{float32(nvgBEZIERTO),
 		x0 + 2.0/3.0*(cx-x0), y0 + 2.0/3.0*(cy-y0),
 		x + 2.0/3.0*(cx-x), y + 2.0/3.0*(cy-y),
 		x, y,
@@ -516,9 +521,9 @@ func (c *Context) QuadTo(cx, cy, x, y float32) {
 // Arc creates new circle arc shaped sub-path. The arc center is at cx,cy, the arc radius is r,
 // and the arc is drawn from angle a0 to a1, and swept in direction dir (CounterClockwise, or Clockwise).
 // Angles are specified in radians.
-func (c *Context) Arc(cx, cy, r, a0, a1 float32, dir Direction) {
+func (ctx *Context) Arc(cx, cy, r, a0, a1 float32, dir Direction) {
 	var move nvgCommands
-	if len(c.commands) > 0 {
+	if len(ctx.commands) > 0 {
 		move = nvgLINETO
 	} else {
 		move = nvgMOVETO
@@ -572,23 +577,23 @@ func (c *Context) Arc(cx, cy, r, a0, a1 float32, dir Direction) {
 		pTanX = tanX
 		pTanY = tanY
 	}
-	c.appendCommand(values)
+	ctx.appendCommand(values)
 }
 
 // ArcTo adds an arc segment at the corner defined by the last path point, and two specified points.
-func (c *Context) ArcTo(x1, y1, x2, y2, radius float32) {
-	if len(c.commands) == 0 {
+func (ctx *Context) ArcTo(x1, y1, x2, y2, radius float32) {
+	if len(ctx.commands) == 0 {
 		return
 	}
-	x0 := c.commandX
-	y0 := c.commandY
+	x0 := ctx.commandX
+	y0 := ctx.commandY
 
 	// Handle degenerate cases.
-	if ptEquals(x0, y0, x1, y1, c.distTol) ||
-		ptEquals(x1, y1, x2, y2, c.distTol) ||
-		distPtSeg(x1, y1, x0, y0, x2, y2) < c.distTol*c.distTol ||
-		radius < c.distTol {
-		c.LineTo(x1, y1)
+	if ptEquals(x0, y0, x1, y1, ctx.distTol) ||
+		ptEquals(x1, y1, x2, y2, ctx.distTol) ||
+		distPtSeg(x1, y1, x0, y0, x2, y2) < ctx.distTol*ctx.distTol ||
+		radius < ctx.distTol {
+		ctx.LineTo(x1, y1)
 		return
 	}
 
@@ -603,7 +608,7 @@ func (c *Context) ArcTo(x1, y1, x2, y2, radius float32) {
 	d := radius / tanF(a/2.0)
 
 	if d > 10000.0 {
-		c.LineTo(x1, y1)
+		ctx.LineTo(x1, y1)
 		return
 	}
 	var cx, cy, a0, a1 float32
@@ -621,12 +626,12 @@ func (c *Context) ArcTo(x1, y1, x2, y2, radius float32) {
 		a1 = atan2F(dx1, -dy1)
 		dir = CounterClockwise
 	}
-	c.Arc(cx, cy, radius, a0, a1, dir)
+	ctx.Arc(cx, cy, radius, a0, a1, dir)
 }
 
 // Rect creates new rectangle shaped sub-path.
-func (c *Context) Rect(x, y, w, h float32) {
-	c.appendCommand([]float32{
+func (ctx *Context) Rect(x, y, w, h float32) {
+	ctx.appendCommand([]float32{
 		float32(nvgMOVETO), x, y,
 		float32(nvgLINETO), x, y + h,
 		float32(nvgLINETO), x + w, y + h,
@@ -636,13 +641,13 @@ func (c *Context) Rect(x, y, w, h float32) {
 }
 
 // RoundedRect creates new rounded rectangle shaped sub-path.
-func (c *Context) RoundedRect(x, y, w, h, r float32) {
+func (ctx *Context) RoundedRect(x, y, w, h, r float32) {
 	if r < 0.1 {
-		c.Rect(x, y, w, h)
+		ctx.Rect(x, y, w, h)
 	} else {
 		rx := minF(r, absF(w)*0.5) * signF(w)
 		ry := minF(r, absF(h)*0.5) * signF(h)
-		c.appendCommand([]float32{
+		ctx.appendCommand([]float32{
 			float32(nvgMOVETO), x, y + ry,
 			float32(nvgLINETO), x, y + h - ry,
 			float32(nvgBEZIERTO), x, y + h - ry*(1-Kappa90), x + rx*(1-Kappa90), y + h, x + rx, y + h,
@@ -658,8 +663,8 @@ func (c *Context) RoundedRect(x, y, w, h, r float32) {
 }
 
 // Ellipse creates new ellipse shaped sub-path.
-func (c *Context) Ellipse(cx, cy, rx, ry float32) {
-	c.appendCommand([]float32{
+func (ctx *Context) Ellipse(cx, cy, rx, ry float32) {
+	ctx.appendCommand([]float32{
 		float32(nvgMOVETO), cx - rx, cy,
 		float32(nvgBEZIERTO), cx - rx, cy + ry*Kappa90, cx - rx*Kappa90, cy + ry, cx, cy + ry,
 		float32(nvgBEZIERTO), cx + rx*Kappa90, cy + ry, cx + rx, cy + ry*Kappa90, cx + rx, cy,
@@ -670,25 +675,25 @@ func (c *Context) Ellipse(cx, cy, rx, ry float32) {
 }
 
 // Circle creates new circle shaped sub-path.
-func (c *Context) Circle(cx, cy, r float32) {
-	c.Ellipse(cx, cy, r, r)
+func (ctx *Context) Circle(cx, cy, r float32) {
+	ctx.Ellipse(cx, cy, r, r)
 }
 
 // ClosePath closes current sub-path with a line segment.
-func (c *Context) ClosePath() {
-	c.appendCommand([]float32{float32(nvgCLOSE)})
+func (ctx *Context) ClosePath() {
+	ctx.appendCommand([]float32{float32(nvgCLOSE)})
 }
 
 // PathWinding sets the current sub-path winding, see Winding.
-func (c *Context) PathWinding(winding Winding) {
-	c.appendCommand([]float32{float32(nvgWINDING), float32(winding)})
+func (ctx *Context) PathWinding(winding Winding) {
+	ctx.appendCommand([]float32{float32(nvgWINDING), float32(winding)})
 }
 
 // DebugDumpPathCache prints cached path information to console
-func (c *Context) DebugDumpPathCache() {
-	log.Printf("Dumping %d cached paths\n", len(c.cache.paths))
-	for i := 0; i < len(c.cache.paths); i++ {
-		path := &c.cache.paths[i]
+func (ctx *Context) DebugDumpPathCache() {
+	log.Printf("Dumping %d cached paths\n", len(ctx.cache.paths))
+	for i := 0; i < len(ctx.cache.paths); i++ {
+		path := &ctx.cache.paths[i]
 		log.Printf(" - Path %d\n", i)
 		if len(path.fills) > 0 {
 			log.Printf("   - fill: %d\n", len(path.fills))
@@ -706,187 +711,187 @@ func (c *Context) DebugDumpPathCache() {
 }
 
 // Fill fills the current path with current fill style.
-func (c *Context) Fill() {
-	state := c.getState()
+func (ctx *Context) Fill() {
+	state := ctx.getState()
 	fillPaint := state.fill
-	c.flattenPaths()
+	ctx.flattenPaths()
 
-	if c.params.edgeAntiAlias() {
-		c.cache.expandFill(c.fringeWidth, Miter, 2.4, c.fringeWidth)
+	if ctx.params.edgeAntiAlias() {
+		ctx.cache.expandFill(ctx.fringeWidth, Miter, 2.4, ctx.fringeWidth)
 	} else {
-		c.cache.expandFill(0.0, Miter, 2.4, c.fringeWidth)
+		ctx.cache.expandFill(0.0, Miter, 2.4, ctx.fringeWidth)
 	}
 
 	// Apply global alpha
 	fillPaint.innerColor.A *= state.alpha
 	fillPaint.outerColor.A *= state.alpha
 
-	c.params.renderFill(&fillPaint, &state.scissor, c.fringeWidth, c.cache.bounds, c.cache.paths)
+	ctx.params.renderFill(&fillPaint, &state.scissor, ctx.fringeWidth, ctx.cache.bounds, ctx.cache.paths)
 
 	// Count triangles
-	for i := 0; i < len(c.cache.paths); i++ {
-		path := &c.cache.paths[i]
-		c.fillTriCount += int32(len(path.fills) - 2)
-		c.strokeTriCount += int32(len(path.strokes) - 2)
-		c.drawCallCount += 2
+	for i := 0; i < len(ctx.cache.paths); i++ {
+		path := &ctx.cache.paths[i]
+		ctx.fillTriCount += len(path.fills) - 2
+		ctx.strokeTriCount += len(path.strokes) - 2
+		ctx.drawCallCount += 2
 	}
 }
 
 // Stroke draws the current path with current stroke style.
-func (c *Context) Stroke() {
-	state := c.getState()
+func (ctx *Context) Stroke() {
+	state := ctx.getState()
 	scale := state.xform.getAverageScale()
 	strokeWidth := clampF(state.strokeWidth*scale, 0.0, 200.0)
 	strokePaint := state.stroke
 
-	if strokeWidth < c.fringeWidth {
+	if strokeWidth < ctx.fringeWidth {
 		// If the stroke width is less than pixel size, use alpha to emulate coverage.
 		// Since coverage is area, scale by alpha*alpha.
-		alpha := clampF(strokeWidth/c.fringeWidth, 0.0, 1.0)
+		alpha := clampF(strokeWidth/ctx.fringeWidth, 0.0, 1.0)
 		strokePaint.innerColor.A *= alpha * alpha
 		strokePaint.outerColor.A *= alpha * alpha
-		strokeWidth = c.fringeWidth
+		strokeWidth = ctx.fringeWidth
 	}
 
 	// Apply global alpha
 	strokePaint.innerColor.A *= state.alpha
 	strokePaint.outerColor.A *= state.alpha
 
-	c.flattenPaths()
-	for _, path := range c.cache.paths {
+	ctx.flattenPaths()
+	for _, path := range ctx.cache.paths {
 		if path.count == 1 {
 			panic("")
 		}
 	}
-	if c.params.edgeAntiAlias() {
-		c.cache.expandStroke(strokeWidth*0.5+c.fringeWidth*0.5, state.lineCap, state.lineJoin, state.miterLimit, c.fringeWidth, c.tessTol)
+	if ctx.params.edgeAntiAlias() {
+		ctx.cache.expandStroke(strokeWidth*0.5+ctx.fringeWidth*0.5, state.lineCap, state.lineJoin, state.miterLimit, ctx.fringeWidth, ctx.tessTol)
 	} else {
-		c.cache.expandStroke(strokeWidth*0.5, state.lineCap, state.lineJoin, state.miterLimit, c.fringeWidth, c.tessTol)
+		ctx.cache.expandStroke(strokeWidth*0.5, state.lineCap, state.lineJoin, state.miterLimit, ctx.fringeWidth, ctx.tessTol)
 	}
-	c.params.renderStroke(&strokePaint, &state.scissor, c.fringeWidth, strokeWidth, c.cache.paths)
+	ctx.params.renderStroke(&strokePaint, &state.scissor, ctx.fringeWidth, strokeWidth, ctx.cache.paths)
 
 	// Count triangles
-	for i := 0; i < len(c.cache.paths); i++ {
-		path := &c.cache.paths[i]
-		c.strokeTriCount += int32(len(path.strokes) - 2)
-		c.drawCallCount += 2
+	for i := 0; i < len(ctx.cache.paths); i++ {
+		path := &ctx.cache.paths[i]
+		ctx.strokeTriCount += len(path.strokes) - 2
+		ctx.drawCallCount += 2
 	}
 }
 
 // CreateFont creates font by loading it from the disk from specified file name.
 // Returns handle to the font.
-func (c *Context) CreateFont(name, filePath string) int {
-	return c.fs.AddFont(name, filePath)
+func (ctx *Context) CreateFont(name, filePath string) int {
+	return ctx.fs.AddFont(name, filePath)
 }
 
 // CreateFontFromMemory creates image by loading it from the specified memory chunk.
 // Returns handle to the font.
-func (c *Context) CreateFontFromMemory(name string, data []byte, freeData uint8) int {
-	return c.fs.AddFontFromMemory(name, data, freeData)
+func (ctx *Context) CreateFontFromMemory(name string, data []byte, freeData uint8) int {
+	return ctx.fs.AddFontFromMemory(name, data, freeData)
 }
 
 // FindFont finds a loaded font of specified name, and returns handle to it, or -1 if the font is not found.
-func (c *Context) FindFont(name string) int {
-	return c.fs.GetFontByName(name)
+func (ctx *Context) FindFont(name string) int {
+	return ctx.fs.GetFontByName(name)
 }
 
 // SetFontSize sets the font size of current text style.
-func (c *Context) SetFontSize(size float32) {
+func (ctx *Context) SetFontSize(size float32) {
 	if size < 0 {
 		panic("Context.SetFontSize: negative font size is invalid")
 	}
-	c.getState().fontSize = size
+	ctx.getState().fontSize = size
 }
 
 // FontSize gets the font size of current text style.
-func (c *Context) FontSize() float32 {
-	return c.getState().fontSize
+func (ctx *Context) FontSize() float32 {
+	return ctx.getState().fontSize
 }
 
 // SetFontBlur sets the font blur of current text style.
-func (c *Context) SetFontBlur(blur float32) {
-	c.getState().fontBlur = blur
+func (ctx *Context) SetFontBlur(blur float32) {
+	ctx.getState().fontBlur = blur
 }
 
 // FontBlur gets the font blur of current text style.
-func (c *Context) FontBlur() float32 {
-	return c.getState().fontBlur
+func (ctx *Context) FontBlur() float32 {
+	return ctx.getState().fontBlur
 }
 
 // SetTextLetterSpacing sets the letter spacing of current text style.
-func (c *Context) SetTextLetterSpacing(spacing float32) {
-	c.getState().letterSpacing = spacing
+func (ctx *Context) SetTextLetterSpacing(spacing float32) {
+	ctx.getState().letterSpacing = spacing
 }
 
 // TextLetterSpacing gets the letter spacing of current text style.
-func (c *Context) TextLetterSpacing() float32 {
-	return c.getState().letterSpacing
+func (ctx *Context) TextLetterSpacing() float32 {
+	return ctx.getState().letterSpacing
 }
 
 // SetTextLineHeight sets the line height of current text style.
-func (c *Context) SetTextLineHeight(lineHeight float32) {
-	c.getState().lineHeight = lineHeight
+func (ctx *Context) SetTextLineHeight(lineHeight float32) {
+	ctx.getState().lineHeight = lineHeight
 }
 
 // TextLineHeight gets the line height of current text style.
-func (c *Context) TextLineHeight() float32 {
-	return c.getState().lineHeight
+func (ctx *Context) TextLineHeight() float32 {
+	return ctx.getState().lineHeight
 }
 
 // SetTextAlign sets the text align of current text style.
-func (c *Context) SetTextAlign(align Align) {
-	c.getState().textAlign = align
+func (ctx *Context) SetTextAlign(align Align) {
+	ctx.getState().textAlign = align
 }
 
 // TextAlign gets the text align of current text style.
-func (c *Context) TextAlign() Align {
-	return c.getState().textAlign
+func (ctx *Context) TextAlign() Align {
+	return ctx.getState().textAlign
 }
 
 // SetFontFaceID sets the font face based on specified id of current text style.
-func (c *Context) SetFontFaceID(font int) {
-	c.getState().fontID = font
+func (ctx *Context) SetFontFaceID(font int) {
+	ctx.getState().fontID = font
 }
 
 // FontFaceID gets the font face id of current text style.
-func (c *Context) FontFaceID() int {
-	return c.getState().fontID
+func (ctx *Context) FontFaceID() int {
+	return ctx.getState().fontID
 }
 
 // SetFontFace sets the font face based on specified name of current text style.
-func (c *Context) SetFontFace(font string) {
-	c.getState().fontID = c.fs.GetFontByName(font)
+func (ctx *Context) SetFontFace(font string) {
+	ctx.getState().fontID = ctx.fs.GetFontByName(font)
 }
 
 // FontFace gets the font face name of current text style.
-func (c *Context) FontFace() string {
-	return c.fs.GetFontName()
+func (ctx *Context) FontFace() string {
+	return ctx.fs.GetFontName()
 }
 
 // Text draws text string at specified location. If end is specified only the sub-string up to the end is drawn.
-func (c *Context) Text(x, y float32, str string) float32 {
-	return c.TextRune(x, y, []rune(str))
+func (ctx *Context) Text(x, y float32, str string) float32 {
+	return ctx.TextRune(x, y, []rune(str))
 }
 
 // TextRune is an alternate version of Text that accepts rune slice.
-func (c *Context) TextRune(x, y float32, runes []rune) float32 {
-	state := c.getState()
-	scale := state.getFontScale() * c.devicePxRatio
+func (ctx *Context) TextRune(x, y float32, runes []rune) float32 {
+	state := ctx.getState()
+	scale := state.getFontScale() * ctx.devicePxRatio
 	invScale := 1.0 / scale
 	if state.fontID == fontstashmini.INVALID {
 		return 0
 	}
 
-	c.fs.SetSize(state.fontSize * scale)
-	c.fs.SetSpacing(state.letterSpacing * scale)
-	c.fs.SetBlur(state.fontBlur * scale)
-	c.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
-	c.fs.SetFont(state.fontID)
+	ctx.fs.SetSize(state.fontSize * scale)
+	ctx.fs.SetSpacing(state.letterSpacing * scale)
+	ctx.fs.SetBlur(state.fontBlur * scale)
+	ctx.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
+	ctx.fs.SetFont(state.fontID)
 
 	vertexCount := maxI(2, len(runes)) * 4 // conservative estimate.
-	vertexes := c.cache.allocVertexes(vertexCount)
+	vertexes := ctx.cache.allocVertexes(vertexCount)
 
-	iter := c.fs.TextIterForRunes(x*scale, y*scale, runes)
+	iter := ctx.fs.TextIterForRunes(x*scale, y*scale, runes)
 	prevIter := iter
 	index := 0
 
@@ -896,11 +901,11 @@ func (c *Context) TextRune(x, y float32, runes []rune) float32 {
 			break
 		}
 		if iter.PrevGlyph == nil || iter.PrevGlyph.Index == -1 {
-			if !c.allocTextAtlas() {
+			if !ctx.allocTextAtlas() {
 				break // no memory :(
 			}
 			if index != 0 {
-				c.renderText(vertexes[:index])
+				ctx.renderText(vertexes[:index])
 				index = 0
 			}
 			iter = prevIter
@@ -916,7 +921,7 @@ func (c *Context) TextRune(x, y float32, runes []rune) float32 {
 		c2, c3 := state.xform.TransformPoint(quad.X1*invScale, quad.Y0*invScale)
 		c4, c5 := state.xform.TransformPoint(quad.X1*invScale, quad.Y1*invScale)
 		c6, c7 := state.xform.TransformPoint(quad.X0*invScale, quad.Y1*invScale)
-		//log.Printf("quad(%c) x0=%d, x1=%d, y0=%d, y1=%d, s0=%d, s1=%d, t0=%d, t1=%d\n", iter.CodePoint, int(quad.X0), int(quad.X1), int(quad.Y0), int(quad.Y1), int(1024*quad.S0), int(quad.S1*1024), int(quad.T0*1024), int(quad.T1*1024))
+		//log.Printf("quad(%ctx) x0=%d, x1=%d, y0=%d, y1=%d, s0=%d, s1=%d, t0=%d, t1=%d\n", iter.CodePoint, int(quad.X0), int(quad.X1), int(quad.Y0), int(quad.Y1), int(1024*quad.S0), int(quad.S1*1024), int(quad.T0*1024), int(quad.T1*1024))
 		// Create triangles
 		if index+4 <= vertexCount {
 			(&vertexes[index]).set(c2, c3, quad.S1, quad.T0)
@@ -926,8 +931,8 @@ func (c *Context) TextRune(x, y float32, runes []rune) float32 {
 			index += 4
 		}
 	}
-	c.flushTextTexture()
-	c.renderText(vertexes[:index])
+	ctx.flushTextTexture()
+	ctx.renderText(vertexes[:index])
 	return iter.X
 }
 
@@ -935,8 +940,8 @@ func (c *Context) TextRune(x, y float32, runes []rune) float32 {
 // White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
 // Draws text string at specified location. If end is specified only the sub-string up to the end is drawn.
-func (c *Context) TextBox(x, y, breakRowWidth float32, str string) {
-	state := c.getState()
+func (ctx *Context) TextBox(x, y, breakRowWidth float32, str string) {
+	state := ctx.getState()
 	if state.fontID == fontstashmini.INVALID {
 		return
 	}
@@ -955,19 +960,19 @@ func (c *Context) TextBox(x, y, breakRowWidth float32, str string) {
 	vAlign := state.textAlign & (AlignTop | AlignMiddle | AlignBottom | AlignBaseline)
 	state.textAlign = AlignLeft | vAlign
 
-	_, _, lineH := c.TextMetrics()
+	_, _, lineH := ctx.TextMetrics()
 
 	state.textAlign = oldAlign
 
-	for _, row := range c.TextBreakLinesRune(runes, breakRowWidth) {
+	for _, row := range ctx.TextBreakLinesRune(runes, breakRowWidth) {
 		text := string(runes[row.StartIndex:row.EndIndex])
 		switch hAlign {
 		case AlignLeft:
-			c.Text(x, y, text)
+			ctx.Text(x, y, text)
 		case AlignCenter:
-			c.Text(x+breakRowWidth*0.5-row.Width*0.5, y, text)
+			ctx.Text(x+breakRowWidth*0.5-row.Width*0.5, y, text)
 		case AlignRight:
-			c.Text(x+breakRowWidth-row.Width, y, text)
+			ctx.Text(x+breakRowWidth-row.Width, y, text)
 		}
 		y += lineH * state.lineHeight
 	}
@@ -977,23 +982,23 @@ func (c *Context) TextBox(x, y, breakRowWidth float32, str string) {
 // if the bounding box of the text should be returned. The bounds value are [xmin,ymin, xmax,ymax]
 // Returns the horizontal advance of the measured text (i.e. where the next character should drawn).
 // Measured values are returned in local coordinate space.
-func (c *Context) TextBounds(x, y float32, str string) (float32, []float32) {
-	state := c.getState()
-	scale := state.getFontScale() * c.devicePxRatio
+func (ctx *Context) TextBounds(x, y float32, str string) (float32, []float32) {
+	state := ctx.getState()
+	scale := state.getFontScale() * ctx.devicePxRatio
 	invScale := 1.0 / scale
 	if state.fontID == fontstashmini.INVALID {
 		return 0, nil
 	}
 
-	c.fs.SetSize(state.fontSize * scale)
-	c.fs.SetSpacing(state.letterSpacing * scale)
-	c.fs.SetBlur(state.fontBlur * scale)
-	c.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
-	c.fs.SetFont(state.fontID)
+	ctx.fs.SetSize(state.fontSize * scale)
+	ctx.fs.SetSpacing(state.letterSpacing * scale)
+	ctx.fs.SetBlur(state.fontBlur * scale)
+	ctx.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
+	ctx.fs.SetFont(state.fontID)
 
-	width, bounds := c.fs.TextBounds(x*scale, y*scale, str)
+	width, bounds := ctx.fs.TextBounds(x*scale, y*scale, str)
 	if bounds != nil {
-		bounds[1], bounds[3] = c.fs.LineBounds(y * scale)
+		bounds[1], bounds[3] = ctx.fs.LineBounds(y * scale)
 		bounds[0] *= invScale
 		bounds[1] *= invScale
 		bounds[2] *= invScale
@@ -1005,13 +1010,13 @@ func (c *Context) TextBounds(x, y float32, str string) (float32, []float32) {
 // TextBoxBounds measures the specified multi-text string. Parameter bounds should be a pointer to float[4],
 // if the bounding box of the text should be returned. The bounds value are [xmin,ymin, xmax,ymax]
 // Measured values are returned in local coordinate space.
-func (c *Context) TextBoxBounds(x, y, breakRowWidth float32, str string) [4]float32 {
-	state := c.getState()
+func (ctx *Context) TextBoxBounds(x, y, breakRowWidth float32, str string) [4]float32 {
+	state := ctx.getState()
 	if state.fontID == fontstashmini.INVALID {
 		return [4]float32{}
 	}
 	runes := []rune(str)
-	scale := state.getFontScale() * c.devicePxRatio
+	scale := state.getFontScale() * ctx.devicePxRatio
 	invScale := 1.0 / scale
 
 	oldAlign := state.textAlign
@@ -1032,18 +1037,18 @@ func (c *Context) TextBoxBounds(x, y, breakRowWidth float32, str string) [4]floa
 	maxX := x
 	maxY := y
 
-	_, _, lineH := c.TextMetrics()
-	/*c.fs.SetSize(state.fontSize * scale)
-	c.fs.SetSpacing(state.letterSpacing * scale)
-	c.fs.SetBlur(state.fontBlur * scale)
-	c.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
-	c.fs.SetFont(state.fontId)*/
+	_, _, lineH := ctx.TextMetrics()
+	/*ctx.fs.SetSize(state.fontSize * scale)
+	ctx.fs.SetSpacing(state.letterSpacing * scale)
+	ctx.fs.SetBlur(state.fontBlur * scale)
+	ctx.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
+	ctx.fs.SetFont(state.fontId)*/
 
-	rMinY, rMaxY := c.fs.LineBounds(0)
+	rMinY, rMaxY := ctx.fs.LineBounds(0)
 	rMinY *= invScale
 	rMaxY *= invScale
 
-	for _, row := range c.TextBreakLinesRune(runes, breakRowWidth) {
+	for _, row := range ctx.TextBreakLinesRune(runes, breakRowWidth) {
 		var dx float32
 		// Horizontal bounds
 		switch hAlign {
@@ -1071,28 +1076,28 @@ func (c *Context) TextBoxBounds(x, y, breakRowWidth float32, str string) [4]floa
 
 // TextGlyphPositions calculates the glyph x positions of the specified text. If end is specified only the sub-string will be used.
 // Measured values are returned in local coordinate space.
-func (c *Context) TextGlyphPositions(x, y float32, str string) []GlyphPosition {
-	return c.TextGlyphPositionsRune(x, y, []rune(str))
+func (ctx *Context) TextGlyphPositions(x, y float32, str string) []GlyphPosition {
+	return ctx.TextGlyphPositionsRune(x, y, []rune(str))
 }
 
 // TextGlyphPositionsRune is an alternate version of TextGlyphPositions that accepts rune slice
-func (c *Context) TextGlyphPositionsRune(x, y float32, runes []rune) []GlyphPosition {
-	state := c.getState()
-	scale := state.getFontScale() * c.devicePxRatio
+func (ctx *Context) TextGlyphPositionsRune(x, y float32, runes []rune) []GlyphPosition {
+	state := ctx.getState()
+	scale := state.getFontScale() * ctx.devicePxRatio
 	invScale := 1.0 / scale
 	if state.fontID == fontstashmini.INVALID {
 		return nil
 	}
 
-	c.fs.SetSize(state.fontSize * scale)
-	c.fs.SetSpacing(state.letterSpacing * scale)
-	c.fs.SetBlur(state.fontBlur * scale)
-	c.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
-	c.fs.SetFont(state.fontID)
+	ctx.fs.SetSize(state.fontSize * scale)
+	ctx.fs.SetSpacing(state.letterSpacing * scale)
+	ctx.fs.SetBlur(state.fontBlur * scale)
+	ctx.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
+	ctx.fs.SetFont(state.fontID)
 
 	positions := make([]GlyphPosition, 0, len(runes))
 
-	iter := c.fs.TextIterForRunes(x*scale, y*scale, runes)
+	iter := ctx.fs.TextIterForRunes(x*scale, y*scale, runes)
 	prevIter := iter
 
 	for {
@@ -1100,7 +1105,7 @@ func (c *Context) TextGlyphPositionsRune(x, y float32, runes []rune) []GlyphPosi
 		if !ok {
 			break
 		}
-		if iter.PrevGlyph.Index == -1 && !c.allocTextAtlas() {
+		if iter.PrevGlyph.Index == -1 && !ctx.allocTextAtlas() {
 			iter = prevIter
 			quad, _ = iter.Next() // try again
 		}
@@ -1118,35 +1123,35 @@ func (c *Context) TextGlyphPositionsRune(x, y float32, runes []rune) []GlyphPosi
 
 // TextMetrics returns the vertical metrics based on the current text style.
 // Measured values are returned in local coordinate space.
-func (c *Context) TextMetrics() (float32, float32, float32) {
-	state := c.getState()
-	scale := state.getFontScale() * c.devicePxRatio
+func (ctx *Context) TextMetrics() (float32, float32, float32) {
+	state := ctx.getState()
+	scale := state.getFontScale() * ctx.devicePxRatio
 	invScale := 1.0 / scale
 	if state.fontID == fontstashmini.INVALID {
 		return 0, 0, 0
 	}
 
-	c.fs.SetSize(state.fontSize * scale)
-	c.fs.SetSpacing(state.letterSpacing * scale)
-	c.fs.SetBlur(state.fontBlur * scale)
-	c.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
-	c.fs.SetFont(state.fontID)
+	ctx.fs.SetSize(state.fontSize * scale)
+	ctx.fs.SetSpacing(state.letterSpacing * scale)
+	ctx.fs.SetBlur(state.fontBlur * scale)
+	ctx.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
+	ctx.fs.SetFont(state.fontID)
 
-	ascender, descender, lineH := c.fs.VerticalMetrics()
+	ascender, descender, lineH := ctx.fs.VerticalMetrics()
 	return ascender * invScale, descender * invScale, lineH * invScale
 }
 
 // TextBreakLines breaks the specified text into lines. If end is specified only the sub-string will be used.
 // White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
-func (c *Context) TextBreakLines(str string, breakRowWidth float32) []TextRow {
-	return c.TextBreakLinesRune([]rune(str), breakRowWidth)
+func (ctx *Context) TextBreakLines(str string, breakRowWidth float32) []TextRow {
+	return ctx.TextBreakLinesRune([]rune(str), breakRowWidth)
 }
 
 // TextBreakLinesRune is an alternate version of TextBreakLines that accepts rune slice
-func (c *Context) TextBreakLinesRune(runes []rune, breakRowWidth float32) []TextRow {
-	state := c.getState()
-	scale := state.getFontScale() * c.devicePxRatio
+func (ctx *Context) TextBreakLinesRune(runes []rune, breakRowWidth float32) []TextRow {
+	state := ctx.getState()
+	scale := state.getFontScale() * ctx.devicePxRatio
 	invScale := 1.0 / scale
 	if state.fontID == fontstashmini.INVALID {
 		return nil
@@ -1155,15 +1160,15 @@ func (c *Context) TextBreakLinesRune(runes []rune, breakRowWidth float32) []Text
 	currentType := nvgSPACE
 	prevType := nvgCHAR
 
-	c.fs.SetSize(state.fontSize * scale)
-	c.fs.SetSpacing(state.letterSpacing * scale)
-	c.fs.SetBlur(state.fontBlur * scale)
-	c.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
-	c.fs.SetFont(state.fontID)
+	ctx.fs.SetSize(state.fontSize * scale)
+	ctx.fs.SetSpacing(state.letterSpacing * scale)
+	ctx.fs.SetBlur(state.fontBlur * scale)
+	ctx.fs.SetAlign(fontstashmini.FONSAlign(state.textAlign))
+	ctx.fs.SetFont(state.fontID)
 
 	breakRowWidth *= scale
 
-	iter := c.fs.TextIterForRunes(0, 0, runes)
+	iter := ctx.fs.TextIterForRunes(0, 0, runes)
 	prevIter := iter
 	var prevCodePoint rune
 	var rows []TextRow
@@ -1179,7 +1184,7 @@ func (c *Context) TextBreakLinesRune(runes []rune, breakRowWidth float32) []Text
 		if !ok {
 			break
 		}
-		if iter.PrevGlyph == nil || iter.PrevGlyph.Index == -1 && !c.allocTextAtlas() {
+		if iter.PrevGlyph == nil || iter.PrevGlyph.Index == -1 && !ctx.allocTextAtlas() {
 			iter = prevIter
 			quad, _ = iter.Next() // try again
 		}
@@ -1347,7 +1352,7 @@ func createInternal(params nvgParams) (*Context, error) {
 	context := &Context{
 		params:     params,
 		states:     make([]nvgState, 0, nvgMaxStates),
-		fontImages: make([]int32, nvgMaxFontImages),
+		fontImages: make([]int, nvgMaxFontImages),
 		commands:   make([]float32, 0, nvgInitCommandsSize),
 		cache: nvgPathCache{
 			points:   make([]nvgPoint, 0, nvgInitPointsSize),
@@ -1368,23 +1373,23 @@ func createInternal(params nvgParams) (*Context, error) {
 	return context, nil
 }
 
-func (c *Context) setDevicePixelRatio(ratio float32) {
-	c.tessTol = 0.25 / ratio
-	c.distTol = 0.01 / ratio
-	c.fringeWidth = 1.0 / ratio
-	c.devicePxRatio = ratio
+func (ctx *Context) setDevicePixelRatio(ratio float32) {
+	ctx.tessTol = 0.25 / ratio
+	ctx.distTol = 0.01 / ratio
+	ctx.fringeWidth = 1.0 / ratio
+	ctx.devicePxRatio = ratio
 }
 
-func (c *Context) getState() *nvgState {
-	return &c.states[len(c.states)-1]
+func (ctx *Context) getState() *nvgState {
+	return &ctx.states[len(ctx.states)-1]
 }
 
-func (c *Context) appendCommand(vals []float32) {
-	xForm := c.getState().xform
+func (ctx *Context) appendCommand(vals []float32) {
+	xForm := ctx.getState().xform
 
 	if nvgCommands(vals[0]) != nvgCLOSE && nvgCommands(vals[0]) != nvgWINDING {
-		c.commandX = vals[len(vals)-2]
-		c.commandY = vals[len(vals)-1]
+		ctx.commandX = vals[len(vals)-2]
+		ctx.commandY = vals[len(vals)-1]
 	}
 
 	i := 0
@@ -1409,40 +1414,40 @@ func (c *Context) appendCommand(vals []float32) {
 			i++
 		}
 	}
-	c.commands = append(c.commands, vals...)
+	ctx.commands = append(ctx.commands, vals...)
 }
 
-func (c *Context) flattenPaths() {
-	cache := &c.cache
+func (ctx *Context) flattenPaths() {
+	cache := &ctx.cache
 	if len(cache.paths) > 0 {
 		return
 	}
 	// Flatten
 	i := 0
-	for i < len(c.commands) {
-		switch nvgCommands(c.commands[i]) {
+	for i < len(ctx.commands) {
+		switch nvgCommands(ctx.commands[i]) {
 		case nvgMOVETO:
 			cache.addPath()
-			cache.addPoint(c.commands[i+1], c.commands[i+2], nvgPtCORNER, c.distTol)
+			cache.addPoint(ctx.commands[i+1], ctx.commands[i+2], nvgPtCORNER, ctx.distTol)
 			i += 3
 		case nvgLINETO:
-			cache.addPoint(c.commands[i+1], c.commands[i+2], nvgPtCORNER, c.distTol)
+			cache.addPoint(ctx.commands[i+1], ctx.commands[i+2], nvgPtCORNER, ctx.distTol)
 			i += 3
 		case nvgBEZIERTO:
 			last := cache.lastPoint()
 			if last != nil {
 				cache.tesselateBezier(
 					last.x, last.y,
-					c.commands[i+1], c.commands[i+2],
-					c.commands[i+3], c.commands[i+4],
-					c.commands[i+5], c.commands[i+6], 0, nvgPtCORNER, c.tessTol, c.distTol)
+					ctx.commands[i+1], ctx.commands[i+2],
+					ctx.commands[i+3], ctx.commands[i+4],
+					ctx.commands[i+5], ctx.commands[i+6], 0, nvgPtCORNER, ctx.tessTol, ctx.distTol)
 			}
 			i += 7
 		case nvgCLOSE:
 			cache.closePath()
 			i++
 		case nvgWINDING:
-			cache.pathWinding(Winding(c.commands[i+1]))
+			cache.pathWinding(Winding(ctx.commands[i+1]))
 			i += 2
 		default:
 			i++
@@ -1458,7 +1463,7 @@ func (c *Context) flattenPaths() {
 		p0 := &points[path.count-1]
 		p1Index := 0
 		p1 := &points[p1Index]
-		if ptEquals(p0.x, p0.y, p1.x, p1.y, c.distTol) && path.count > 2 {
+		if ptEquals(p0.x, p0.y, p1.x, p1.y, ctx.distTol) && path.count > 2 {
 			path.count--
 			p0 = &points[path.count-1]
 			path.closed = true
@@ -1493,62 +1498,62 @@ func (c *Context) flattenPaths() {
 	}
 }
 
-func (c *Context) flushTextTexture() {
-	dirty := c.fs.ValidateTexture()
+func (ctx *Context) flushTextTexture() {
+	dirty := ctx.fs.ValidateTexture()
 	if dirty != nil {
-		fontImage := c.fontImages[c.fontImageIdx]
+		fontImage := ctx.fontImages[ctx.fontImageIdx]
 		// Update texture
 		if fontImage != 0 {
-			data, _, _ := c.fs.GetTextureData()
-			x := int32(dirty[0])
-			y := int32(dirty[1])
-			w := int32(dirty[2]) - x
-			h := int32(dirty[3]) - y
-			c.params.renderUpdateTexture(fontImage, x, y, w, h, data)
+			data, _, _ := ctx.fs.GetTextureData()
+			x := dirty[0]
+			y := dirty[1]
+			w := dirty[2] - x
+			h := dirty[3] - y
+			ctx.params.renderUpdateTexture(fontImage, x, y, w, h, data)
 		}
 	}
 }
 
-func (c *Context) allocTextAtlas() bool {
-	c.flushTextTexture()
-	if c.fontImageIdx >= nvgMaxFontImages-1 {
+func (ctx *Context) allocTextAtlas() bool {
+	ctx.flushTextTexture()
+	if ctx.fontImageIdx >= nvgMaxFontImages-1 {
 		return false
 	}
-	var iw, ih int32
+	var iw, ih int
 	// if next fontImage already have a texture
-	if c.fontImages[c.fontImageIdx+1] != 0 {
-		iw, ih, _ = c.ImageSize(c.fontImages[c.fontImageIdx+1])
+	if ctx.fontImages[ctx.fontImageIdx+1] != 0 {
+		iw, ih, _ = ctx.ImageSize(ctx.fontImages[ctx.fontImageIdx+1])
 	} else { // calculate the new font image size and create it.
-		iw, ih, _ = c.ImageSize(c.fontImages[c.fontImageIdx])
+		iw, ih, _ = ctx.ImageSize(ctx.fontImages[ctx.fontImageIdx])
 		if iw > ih {
 			ih *= 2
 		} else {
 			iw *= 2
 		}
-		if iw > int32(nvgMaxFontImageSize) || ih > int32(nvgMaxFontImageSize) {
-			iw = int32(nvgMaxFontImageSize)
-			ih = int32(nvgMaxFontImageSize)
+		if iw > nvgMaxFontImageSize || ih > nvgMaxFontImageSize {
+			iw = nvgMaxFontImageSize
+			ih = nvgMaxFontImageSize
 		}
-		c.fontImages[c.fontImageIdx+1] = c.params.renderCreateTexture(nvgTextureALPHA, iw, ih, 0, nil)
+		ctx.fontImages[ctx.fontImageIdx+1] = ctx.params.renderCreateTexture(nvgTextureALPHA, iw, ih, 0, nil)
 	}
-	c.fontImageIdx++
-	c.fs.ResetAtlas(int(iw), int(ih))
+	ctx.fontImageIdx++
+	ctx.fs.ResetAtlas(iw, ih)
 	return true
 }
 
-func (c *Context) renderText(vertexes []nvgVertex) {
-	state := c.getState()
+func (ctx *Context) renderText(vertexes []nvgVertex) {
+	state := ctx.getState()
 	paint := state.fill
 
 	// Render triangles
-	paint.image = c.fontImages[c.fontImageIdx]
+	paint.image = ctx.fontImages[ctx.fontImageIdx]
 
 	// Apply global alpha
 	paint.innerColor.A *= state.alpha
 	paint.outerColor.A *= state.alpha
 
-	c.params.renderTriangleStrip(&paint, &state.scissor, vertexes)
+	ctx.params.renderTriangleStrip(&paint, &state.scissor, vertexes)
 
-	c.drawCallCount++
-	c.textTriCount += int32(len(vertexes) / 3)
+	ctx.drawCallCount++
+	ctx.textTriCount += len(vertexes) / 3
 }

@@ -426,7 +426,7 @@ func roundCapEnd(dst []nvgVertex, index int, p *nvgPoint, dx, dy, w float32, nCa
 	return index
 }
 
-func nearestPow2(num int32) int32 {
+func nearestPow2(num int) int {
 	var n uint
 	uNum := uint(num)
 	if uNum > 0 {
@@ -440,7 +440,7 @@ func nearestPow2(num int32) int32 {
 	n |= n >> 8
 	n |= n >> 16
 	n++
-	return int32(num)
+	return int(num)
 }
 
 func quantize(a, d float32) float32 {
